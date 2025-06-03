@@ -11,6 +11,7 @@ import threading
 import time
 from typing import Optional, Dict, Any
 from colorama import Fore
+from pathlib import Path
 
 from core.finance_tracker_modular import FinanceTracker
 from services.currency_service import get_currency_service
@@ -27,13 +28,24 @@ class FinanceTrackerGUI:
     def __init__(self):
         self.tracker = FinanceTracker()
         self.currency_service = get_currency_service()
+        # Use the correct path for settings file
         self.settings_service = get_settings_service()
+        self.settings_service.settings_file = Path('config/user_settings.json')
+        self.settings_service.load_settings()  # Reload with correct path
+        
         self.current_balance = 0.0
         
         # Cache for reducing API calls
         self.cached_records = []
         self.cache_timestamp = 0
         self.cache_duration = 30  # Cache for 30 seconds
+        
+        # Load saved currency setting
+        try:
+            saved_currency = self.settings_service.get_currency()
+            self.currency_service.set_currency(saved_currency)
+        except Exception as e:
+            print(f"Warning: Could not load saved currency: {e}")
         
         # Validate credentials and show warnings
         credential_warnings = validate_credentials()
@@ -90,14 +102,16 @@ class FinanceTrackerGUI:
         # Title with currency info
         currency_info = self.currency_service.get_currency_info()
         title_text = f"💰 Personal Finance Tracker ({currency_info['name']})"
-        title_label = ttk.Label(main_frame, text=title_text, style='Title.TLabel')
-        title_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
+        self.title_label = ttk.Label(main_frame, text=title_text, style='Title.TLabel')
+        self.title_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
         
         # Balance display
         self.balance_frame = ttk.LabelFrame(main_frame, text="Current Balance", padding="10")
         self.balance_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 20))
         
-        self.balance_label = ttk.Label(self.balance_frame, text="$0.00", 
+        # Use dynamic currency formatting instead of hardcoded "$0.00"
+        initial_balance = self.currency_service.format_balance(0.0)
+        self.balance_label = ttk.Label(self.balance_frame, text=initial_balance, 
                                       font=('Arial', 24, 'bold'), foreground='green')
         self.balance_label.pack()
         
@@ -107,7 +121,8 @@ class FinanceTrackerGUI:
         
         # Transaction input
         symbol = self.currency_service.get_currency_symbol()
-        ttk.Label(controls_frame, text=f"Amount ({symbol}):", style='Header.TLabel').grid(row=0, column=0, sticky="w", pady=5)
+        self.amount_label = ttk.Label(controls_frame, text=f"Amount ({symbol}):", style='Header.TLabel')
+        self.amount_label.grid(row=0, column=0, sticky="w", pady=5)
         self.amount_var = tk.StringVar()
         amount_entry = ttk.Entry(controls_frame, textvariable=self.amount_var, width=15)
         amount_entry.grid(row=0, column=1, sticky="w", pady=5)
@@ -135,6 +150,8 @@ class FinanceTrackerGUI:
         ttk.Button(button_frame, text="💳 Refresh Balance", command=self.refresh_balance, 
                   style='Action.TButton').pack(pady=5, fill='x')
         ttk.Button(button_frame, text="📊 Update Charts", command=self.update_charts, 
+                  style='Action.TButton').pack(pady=5, fill='x')
+        ttk.Button(button_frame, text="💱 Currency Settings", command=self.open_currency_settings, 
                   style='Action.TButton').pack(pady=5, fill='x')
         ttk.Button(button_frame, text="🔄 Refresh Data", command=self.refresh_data, 
                   style='Action.TButton').pack(pady=5, fill='x')
@@ -428,6 +445,195 @@ class FinanceTrackerGUI:
     def _invalidate_cache(self):
         """Invalidate the cache to force refresh on next access"""
         self.cache_timestamp = 0
+    
+    def open_currency_settings(self):
+        """Open currency settings dialog with validation"""
+        try:
+            # Get current currency info
+            current_info = self.currency_service.get_currency_info()
+            available_currencies = self.currency_service.get_available_currencies()
+            
+            # Create list of currency options
+            currency_options = []
+            current_index = 0
+            for i, (code, info) in enumerate(available_currencies.items()):
+                currency_text = f"{info['name']} ({info['symbol']})"
+                currency_options.append(currency_text)
+                if code == current_info['code']:
+                    current_index = i
+            
+            # Show selection dialog
+            from tkinter import simpledialog
+            
+            title = "💱 Currency Settings"
+            prompt = f"Current Currency: {current_info['name']} ({current_info['symbol']})\n\nSelect new currency:"
+            
+            # Create custom dialog for currency selection
+            selection_window = tk.Toplevel(self.root)
+            selection_window.title(title)
+            selection_window.geometry("350x400")
+            selection_window.transient(self.root)
+            selection_window.grab_set()
+            
+            # Center the window
+            selection_window.update_idletasks()
+            x = (selection_window.winfo_screenwidth() // 2) - (350 // 2)
+            y = (selection_window.winfo_screenheight() // 2) - (400 // 2)
+            selection_window.geometry(f"350x400+{x}+{y}")
+            
+            # Main frame
+            main_frame = ttk.Frame(selection_window, padding="20")
+            main_frame.pack(fill="both", expand=True)
+            
+            # Title
+            title_label = ttk.Label(main_frame, text="💱 Currency Settings", 
+                                   font=('Arial', 14, 'bold'))
+            title_label.pack(pady=(0, 15))
+            
+            # Current currency display
+            current_text = f"Current: {current_info['name']} ({current_info['symbol']})"
+            current_label = ttk.Label(main_frame, text=current_text, font=('Arial', 10))
+            current_label.pack(pady=(0, 20))
+            
+            # Currency selection
+            selection_frame = ttk.LabelFrame(main_frame, text="Select New Currency", padding="10")
+            selection_frame.pack(fill="both", expand=True, pady=(0, 20))
+            
+            # Selection variable
+            selected_currency = tk.StringVar()
+            
+            # Create radio buttons
+            for code, info in available_currencies.items():
+                currency_text = f"{info['name']} ({info['symbol']})"
+                radio = ttk.Radiobutton(selection_frame, text=currency_text, 
+                                       variable=selected_currency, value=code)
+                radio.pack(anchor="w", pady=5)
+                
+                # Set current currency as selected
+                if code == current_info['code']:
+                    selected_currency.set(code)
+            
+            # Preview section
+            preview_frame = ttk.LabelFrame(main_frame, text="Preview", padding="10")
+            preview_frame.pack(fill="x", pady=(0, 20))
+            
+            preview_text = tk.Text(preview_frame, height=3, width=30, wrap=tk.WORD)
+            preview_text.pack()
+            
+            def update_preview():
+                """Update preview when selection changes"""
+                try:
+                    selected = selected_currency.get()
+                    if selected:
+                        # Create temporary currency service for preview
+                        from services.currency_service import CurrencyService
+                        temp_service = CurrencyService()
+                        temp_service.set_currency(selected)
+                        
+                        # Generate preview
+                        balance = temp_service.format_balance(1234.56)
+                        income = temp_service.format_transaction_amount(500.00)
+                        expense = temp_service.format_transaction_amount(-75.25)
+                        
+                        preview_content = f"Balance: {balance}\nIncome: {income}\nExpense: {expense}"
+                        
+                        preview_text.delete(1.0, tk.END)
+                        preview_text.insert(1.0, preview_content)
+                except Exception as e:
+                    preview_text.delete(1.0, tk.END)
+                    preview_text.insert(1.0, f"Preview error: {str(e)}")
+            
+            # Bind preview update
+            selected_currency.trace("w", lambda *args: update_preview())
+            update_preview()  # Initial preview
+            
+            # Result variable
+            result = {"changed": False, "new_currency": None}
+            
+            def apply_changes():
+                """Apply currency changes with validation"""
+                try:
+                    new_currency = selected_currency.get()
+                    
+                    if not new_currency:
+                        messagebox.showwarning("Selection Required", "Please select a currency.")
+                        return
+                    
+                    if new_currency == current_info['code']:
+                        messagebox.showinfo("No Change", "Currency is already set to this value.")
+                        selection_window.destroy()
+                        return
+                    
+                    # Get new currency info for confirmation
+                    new_info = available_currencies[new_currency]
+                    
+                    # Confirmation dialog
+                    confirm_msg = (f"Change currency from {current_info['name']} ({current_info['symbol']}) "
+                                  f"to {new_info['name']} ({new_info['symbol']})?\n\n"
+                                  f"This will update all displays and save the preference.")
+                    
+                    if messagebox.askyesno("Confirm Currency Change", confirm_msg):
+                        # Apply the change
+                        self.currency_service.set_currency(new_currency)
+                        self.settings_service.set_currency(new_currency)
+                        
+                        # Update all GUI displays
+                        self._update_currency_displays()
+                        
+                        # Refresh data to show in new currency
+                        self.refresh_data()
+                        
+                        # Success message
+                        success_msg = f"Currency changed to {new_info['name']} ({new_info['symbol']})"
+                        self.status_var.set(success_msg)
+                        messagebox.showinfo("Success", success_msg)
+                        
+                        result["changed"] = True
+                        result["new_currency"] = new_currency
+                        
+                        selection_window.destroy()
+                    
+                except Exception as e:
+                    error_msg = f"Failed to change currency: {str(e)}"
+                    self.status_var.set(error_msg)
+                    messagebox.showerror("Error", error_msg)
+            
+            def cancel_changes():
+                """Cancel without changes"""
+                selection_window.destroy()
+            
+            # Buttons
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill="x")
+            
+            ttk.Button(button_frame, text="Apply", command=apply_changes).pack(side="right", padx=(5, 0))
+            ttk.Button(button_frame, text="Cancel", command=cancel_changes).pack(side="right")
+            
+        except Exception as e:
+            error_msg = f"Failed to open currency settings: {str(e)}"
+            self.status_var.set(error_msg)
+            messagebox.showerror("Error", error_msg)
+    
+    def _update_currency_displays(self):
+        """Update all currency-related displays in the GUI"""
+        try:
+            # Update title with new currency info
+            currency_info = self.currency_service.get_currency_info()
+            title_text = f"💰 Personal Finance Tracker ({currency_info['name']})"
+            self.title_label.config(text=title_text)
+            
+            # Update amount entry label
+            symbol = self.currency_service.get_currency_symbol()
+            self.amount_label.config(text=f"Amount ({symbol}):")
+            
+            # Update balance display
+            self._update_balance_display()
+            
+            # Note: Transaction list will be updated when refresh_data is called
+            
+        except Exception as e:
+            print(f"Error updating currency displays: {str(e)}")
+            self.status_var.set(f"Error updating displays: {str(e)}")
     
     def run(self):
         """Start the GUI"""

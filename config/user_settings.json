@@ -1,5 +1,5 @@
 {
-  "currency": "USD",
+  "currency": "PHP",
   "decimal_places": 2,
   "show_currency_symbol": true,
   "date_format": "%Y-%m-%d %H:%M:%S",

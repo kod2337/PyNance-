@@ -21,6 +21,12 @@ class ChartService:
                 print(f"{Fore.YELLOW}📝 No data available for charts")
                 return False
             
+            # Validate data before creating charts
+            valid_records = self._validate_and_clean_records(records)
+            if not valid_records:
+                print(f"{Fore.YELLOW}📝 No valid data available for charts after validation")
+                return False
+            
             print(f"{Fore.CYAN}📊 Creating charts...")
             
             # Get or create charts worksheet
@@ -30,9 +36,9 @@ class ChartService:
             self._clear_existing_charts(charts_worksheet)
             
             # Create different types of charts
-            self._create_category_pie_chart(charts_worksheet, records)
-            self._create_balance_trend_chart(charts_worksheet, records)
-            self._create_monthly_summary_chart(charts_worksheet, records)
+            self._create_category_pie_chart(charts_worksheet, valid_records)
+            self._create_balance_trend_chart(charts_worksheet, valid_records)
+            self._create_monthly_summary_chart(charts_worksheet, valid_records)
             
             print(f"{Fore.GREEN}✅ Charts created successfully!")
             print(f"{Fore.CYAN}📈 Check the 'Charts & Analysis' tab in your spreadsheet")
@@ -41,6 +47,49 @@ class ChartService:
         except Exception as e:
             print(f"{Fore.RED}❌ Error creating charts: {str(e)}")
             return False
+    
+    def _validate_and_clean_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Validate and clean transaction records for chart creation"""
+        valid_records = []
+        invalid_count = 0
+        
+        for i, record in enumerate(records):
+            try:
+                # Check required fields
+                required_fields = ['Date', 'Amount', 'Balance', 'Category']
+                missing_fields = [field for field in required_fields if field not in record or record[field] is None]
+                
+                if missing_fields:
+                    print(f"{Fore.YELLOW}⚠️  Record {i+1} missing fields: {missing_fields}")
+                    invalid_count += 1
+                    continue
+                
+                # Validate Amount field
+                amount_value = record['Amount']
+                if isinstance(amount_value, str) and amount_value.strip() in ['', 'Income', 'Expense']:
+                    print(f"{Fore.YELLOW}⚠️  Record {i+1} has invalid Amount: '{amount_value}'")
+                    invalid_count += 1
+                    continue
+                
+                # Validate Balance field
+                balance_value = record['Balance']
+                if isinstance(balance_value, str) and balance_value.strip() in ['', 'Income', 'Expense']:
+                    print(f"{Fore.YELLOW}⚠️  Record {i+1} has invalid Balance: '{balance_value}'")
+                    invalid_count += 1
+                    continue
+                
+                # Record seems valid
+                valid_records.append(record)
+                
+            except Exception as e:
+                print(f"{Fore.YELLOW}⚠️  Error validating record {i+1}: {str(e)}")
+                invalid_count += 1
+                continue
+        
+        if invalid_count > 0:
+            print(f"{Fore.YELLOW}⚠️  Found {invalid_count} invalid records, using {len(valid_records)} valid records for charts")
+            
+        return valid_records
     
     def _create_category_pie_chart(self, worksheet, records: List[Dict[str, Any]]):
         """Create pie chart for expense categories"""
@@ -159,39 +208,120 @@ class ChartService:
             print(f"{Fore.YELLOW}⚠️  Could not create monthly summary chart: {str(e)}")
     
     def _calculate_category_expenses(self, records: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Calculate total expenses by category"""
+        """Calculate expenses by category for pie chart"""
         category_expenses = {}
+        
         for record in records:
-            if float(record['Amount']) < 0:  # Only expenses
-                category = record['Category']
-                amount = abs(float(record['Amount']))
-                category_expenses[category] = category_expenses.get(category, 0) + amount
+            try:
+                # Safely convert amount to float with validation
+                amount_value = record.get('Amount', 0)
+                
+                # Handle different data types
+                if isinstance(amount_value, (int, float)):
+                    amount = float(amount_value)
+                elif isinstance(amount_value, str):
+                    # Remove any non-numeric characters except decimal point and minus sign
+                    cleaned_amount = ''.join(c for c in amount_value if c.isdigit() or c in '.-')
+                    if cleaned_amount and cleaned_amount not in ['-', '.', '-.']:
+                        amount = float(cleaned_amount)
+                    else:
+                        print(f"{Fore.YELLOW}⚠️  Skipping invalid amount entry: '{amount_value}'")
+                        continue
+                else:
+                    print(f"{Fore.YELLOW}⚠️  Skipping unknown amount type: {type(amount_value)} - {amount_value}")
+                    continue
+                
+                # Only process expenses (negative amounts)
+                if amount < 0:
+                    category = record.get('Category', 'Unknown')
+                    expense_amount = abs(amount)
+                    category_expenses[category] = category_expenses.get(category, 0) + expense_amount
+                    
+            except (ValueError, KeyError, TypeError) as e:
+                print(f"{Fore.YELLOW}⚠️  Skipping invalid record for category chart: {str(e)} - Record: {record}")
+                continue
+            except Exception as e:
+                print(f"{Fore.RED}❌ Error processing record for category chart: {str(e)}")
+                continue
+        
         return category_expenses
     
     def _prepare_balance_data(self, records: List[Dict[str, Any]]) -> List[tuple]:
         """Prepare balance trend data for charting"""
         balance_data = []
         for record in records[-MAX_BALANCE_TREND_ENTRIES:]:
-            date_str = record['Date'][:10]  # Just the date part
-            balance = float(record['Balance'])
-            balance_data.append((date_str, balance))
+            try:
+                date_str = record['Date'][:10]  # Just the date part
+                
+                # Safely convert balance to float with validation
+                balance_value = record.get('Balance', 0)
+                
+                # Handle different data types
+                if isinstance(balance_value, (int, float)):
+                    balance = float(balance_value)
+                elif isinstance(balance_value, str):
+                    # Remove any non-numeric characters except decimal point and minus sign
+                    cleaned_balance = ''.join(c for c in balance_value if c.isdigit() or c in '.-')
+                    if cleaned_balance and cleaned_balance not in ['-', '.', '-.']:
+                        balance = float(cleaned_balance)
+                    else:
+                        print(f"{Fore.YELLOW}⚠️  Skipping invalid balance entry: '{balance_value}'")
+                        continue
+                else:
+                    print(f"{Fore.YELLOW}⚠️  Skipping unknown balance type: {type(balance_value)} - {balance_value}")
+                    continue
+                
+                balance_data.append((date_str, balance))
+                
+            except (ValueError, KeyError, TypeError) as e:
+                print(f"{Fore.YELLOW}⚠️  Skipping invalid record for chart: {str(e)} - Record: {record}")
+                continue
+            except Exception as e:
+                print(f"{Fore.RED}❌ Error processing record for balance chart: {str(e)}")
+                continue
+        
         return balance_data
     
     def _calculate_monthly_data(self, records: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
         """Calculate monthly income and expenses"""
         monthly_data = {}
         for record in records:
-            date_str = record['Date'][:7]  # YYYY-MM format
-            amount = float(record['Amount'])
-            
-            if date_str not in monthly_data:
-                monthly_data[date_str] = {'income': 0, 'expenses': 0}
-            
-            if amount < 0:
-                monthly_data[date_str]['expenses'] += abs(amount)
-            else:
-                monthly_data[date_str]['income'] += amount
-        
+            try:
+                date_str = record['Date'][:7]  # YYYY-MM format
+                
+                # Safely convert amount to float with validation
+                amount_value = record.get('Amount', 0)
+                
+                # Handle different data types
+                if isinstance(amount_value, (int, float)):
+                    amount = float(amount_value)
+                elif isinstance(amount_value, str):
+                    # Remove any non-numeric characters except decimal point and minus sign
+                    cleaned_amount = ''.join(c for c in amount_value if c.isdigit() or c in '.-')
+                    if cleaned_amount and cleaned_amount not in ['-', '.', '-.']:
+                        amount = float(cleaned_amount)
+                    else:
+                        print(f"{Fore.YELLOW}⚠️  Skipping invalid amount entry: '{amount_value}'")
+                        continue
+                else:
+                    print(f"{Fore.YELLOW}⚠️  Skipping unknown amount type: {type(amount_value)} - {amount_value}")
+                    continue
+                
+                if date_str not in monthly_data:
+                    monthly_data[date_str] = {'income': 0, 'expenses': 0}
+                
+                if amount < 0:
+                    monthly_data[date_str]['expenses'] += abs(amount)
+                else:
+                    monthly_data[date_str]['income'] += amount
+                    
+            except (ValueError, KeyError, TypeError) as e:
+                print(f"{Fore.YELLOW}⚠️  Skipping invalid record for monthly chart: {str(e)} - Record: {record}")
+                continue
+            except Exception as e:
+                print(f"{Fore.RED}❌ Error processing record for monthly chart: {str(e)}")
+                continue
+
         return monthly_data
     
     def _build_pie_chart_request(self, sheet_id: int, end_row: int) -> Dict[str, Any]:

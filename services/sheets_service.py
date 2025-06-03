@@ -3,6 +3,7 @@ Google Sheets service for Finance Tracker
 """
 
 import os
+import time
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import List, Dict, Any, Optional
@@ -14,21 +15,45 @@ from config.settings import (
     CHARTS_WORKSHEET_NAME, 
     TRANSACTION_HEADERS,
     CHARTS_WORKSHEET_ROWS,
-    CHARTS_WORKSHEET_COLS
+    CHARTS_WORKSHEET_COLS,
+    DEFAULT_CREDENTIALS_FILE,
+    DEFAULT_SPREADSHEET_NAME,
+    DEFAULT_USER_EMAIL,
+    MAX_API_RETRIES,
+    API_RETRY_DELAY
 )
 
 
 class SheetsService:
     """Handles all Google Sheets operations"""
     
-    def __init__(self, credentials_file: str, spreadsheet_name: str, user_email: str):
-        self.credentials_file = credentials_file
-        self.spreadsheet_name = spreadsheet_name
-        self.user_email = user_email
+    def __init__(self, credentials_file: str = None, spreadsheet_name: str = None, user_email: str = None):
+        self.credentials_file = credentials_file or DEFAULT_CREDENTIALS_FILE
+        self.spreadsheet_name = spreadsheet_name or DEFAULT_SPREADSHEET_NAME
+        self.user_email = user_email or DEFAULT_USER_EMAIL
         self.client = None
         self.spreadsheet = None
         self.transactions_worksheet = None
         
+    def _retry_api_call(self, operation, *args, **kwargs):
+        """Retry API calls with exponential backoff"""
+        last_exception = None
+        
+        for attempt in range(MAX_API_RETRIES):
+            try:
+                return operation(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                if attempt < MAX_API_RETRIES - 1:
+                    wait_time = API_RETRY_DELAY * (2 ** attempt)  # Exponential backoff
+                    print(f"{Fore.YELLOW}⚠️  API call failed (attempt {attempt + 1}/{MAX_API_RETRIES}), retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"{Fore.RED}❌ API call failed after {MAX_API_RETRIES} attempts")
+        
+        # If all retries failed, raise the last exception
+        raise last_exception
+    
     def connect(self) -> bool:
         """Connect to Google Sheets API"""
         try:
@@ -89,33 +114,83 @@ class SheetsService:
         """Add a transaction row to the spreadsheet"""
         try:
             if self.transactions_worksheet:
-                self.transactions_worksheet.append_row(transaction_row)
+                self._retry_api_call(self.transactions_worksheet.append_row, transaction_row)
                 return True
             return False
         except Exception as e:
             print(f"{Fore.RED}❌ Error adding transaction: {str(e)}")
             return False
     
-    def get_all_transactions(self) -> List[Dict[str, Any]]:
+    def get_all_records(self) -> List[Dict[str, Any]]:
         """Get all transactions from spreadsheet"""
         try:
             if self.transactions_worksheet:
-                return self.transactions_worksheet.get_all_records()
+                return self._retry_api_call(self.transactions_worksheet.get_all_records)
             return []
         except Exception as e:
             print(f"{Fore.RED}❌ Error fetching transactions: {str(e)}")
             return []
     
+    def get_all_transactions(self) -> List[Dict[str, Any]]:
+        """Get all transactions from spreadsheet (alias for backward compatibility)"""
+        return self.get_all_records()
+    
     def get_current_balance(self) -> float:
         """Get current balance from last transaction"""
         try:
-            if self.transactions_worksheet:
-                balance_column = self.transactions_worksheet.col_values(6)  # Column F (Balance)
-                if len(balance_column) > 1:  # Skip header
-                    last_balance = balance_column[-1]
-                    return float(last_balance) if last_balance else 0.0
-            return 0.0
-        except:
+            if not self.transactions_worksheet:
+                print(f"{Fore.YELLOW}⚠️  No transactions worksheet available")
+                return 0.0
+                
+            # Get all balance values from column F (Balance column) with retry
+            balance_column = self._retry_api_call(self.transactions_worksheet.col_values, 6)  # Column F (Balance)
+            
+            if len(balance_column) <= 1:  # Only header or no data
+                print(f"{Fore.YELLOW}⚠️  No transactions found")
+                return 0.0
+            
+            # Get the last balance entry
+            last_balance_str = balance_column[-1]
+            
+            # Handle empty or invalid balance entries
+            if not last_balance_str or last_balance_str.strip() == '':
+                print(f"{Fore.YELLOW}⚠️  Last balance entry is empty")
+                return 0.0
+            
+            # Try to convert to float
+            try:
+                balance = float(last_balance_str)
+                return balance
+            except ValueError:
+                print(f"{Fore.RED}❌ Invalid balance format: '{last_balance_str}' - trying to recalculate")
+                # Fallback: calculate balance from transactions
+                return self._calculate_balance_from_transactions()
+                
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error getting current balance: {str(e)}")
+            # Fallback: try to calculate from transaction records
+            try:
+                return self._calculate_balance_from_transactions()
+            except:
+                return 0.0
+    
+    def _calculate_balance_from_transactions(self) -> float:
+        """Calculate balance by summing all transaction amounts (fallback method)"""
+        try:
+            records = self.get_all_records()
+            if not records:
+                return 0.0
+            
+            balance = 0.0
+            for record in records:
+                amount = float(record.get('Amount', 0))
+                balance += amount
+            
+            print(f"{Fore.CYAN}✅ Balance recalculated from transactions: {balance}")
+            return balance
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error calculating balance from transactions: {str(e)}")
             return 0.0
     
     def get_or_create_charts_worksheet(self):

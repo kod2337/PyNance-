@@ -1,0 +1,10 @@
+{
+  "currency": "USD",
+  "decimal_places": 2,
+  "show_currency_symbol": true,
+  "date_format": "%Y-%m-%d %H:%M:%S",
+  "max_recent_transactions": 10,
+  "auto_update_charts": true,
+  "color_coding": true,
+  "first_run": false
+}

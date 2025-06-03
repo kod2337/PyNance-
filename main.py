@@ -11,13 +11,17 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from finance_tracker_modular import FinanceTracker
+from core.finance_tracker_modular import FinanceTracker
 from ui.menu import FinanceTrackerUI
+from services.settings_service import initialize_settings
 
 
 def main():
     """Main application entry point"""
     try:
+        # Initialize settings first
+        initialize_settings()
+        
         # Initialize the Finance Tracker
         tracker = FinanceTracker()
         

@@ -1,45 +1,46 @@
 """
-Modular Finance Tracker - Main Application Class
+Finance Tracker - Modular Version
+Clean, modular personal finance tracker with Google Sheets integration
 """
 
-from typing import List, Dict, Any
-from colorama import Fore, init
+import sys
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+from colorama import Fore, Style
+
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 from models.transaction import Transaction
 from services.sheets_service import SheetsService
 from services.chart_service import ChartService
-from config.settings import (
-    DEFAULT_CREDENTIALS_FILE,
-    DEFAULT_SPREADSHEET_NAME,
-    DEFAULT_USER_EMAIL
-)
-
-# Initialize colorama
-init(autoreset=True)
+from services.currency_service import get_currency_service
+from services.settings_service import get_settings_service
 
 
 class FinanceTracker:
-    """
-    Main Finance Tracker application class
-    Orchestrates all services and provides clean API
-    """
+    """Main Finance Tracker class with modular architecture"""
     
-    def __init__(
-        self,
-        credentials_file: str = DEFAULT_CREDENTIALS_FILE,
-        spreadsheet_name: str = DEFAULT_SPREADSHEET_NAME,
-        user_email: str = DEFAULT_USER_EMAIL
-    ):
-        self.credentials_file = credentials_file
-        self.spreadsheet_name = spreadsheet_name
-        self.user_email = user_email
+    def __init__(self):
+        self.sheets_service = SheetsService()
+        self.chart_service = ChartService(self.sheets_service)  # Pass sheets_service to chart_service
+        self.currency_service = get_currency_service()
+        self.settings_service = get_settings_service()
         
-        # Initialize services
-        self.sheets_service = SheetsService(credentials_file, spreadsheet_name, user_email)
-        self.chart_service = ChartService(self.sheets_service)
-        
-        # Connect to Google Sheets
-        self.connected = self.sheets_service.connect()
+        # Initialize Google Sheets connection
+        self._initialize_connection()
+    
+    def _initialize_connection(self):
+        """Initialize connection to Google Sheets"""
+        try:
+            success = self.sheets_service.connect()
+            if success:
+                print(f"{Fore.GREEN}✅ Connected to Google Sheets successfully!")
+            else:
+                print(f"{Fore.RED}❌ Failed to connect to Google Sheets.")
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error connecting to Google Sheets: {str(e)}")
     
     def add_transaction(self, description: str, category: str, amount: float, transaction_type: str) -> bool:
         """Add a new transaction"""
@@ -62,11 +63,13 @@ class FinanceTracker:
             if self.sheets_service.is_connected():
                 success = self.sheets_service.add_transaction_row(transaction.to_row())
                 if success:
-                    print(f"   💰 New Balance: ${new_balance:.2f}")
+                    formatted_balance = self.currency_service.format_balance(new_balance)
+                    print(f"   💰 New Balance: {formatted_balance}")
                     
                     # Automatically update charts after adding transaction
-                    print(f"{Fore.CYAN}   📊 Updating charts...")
-                    self._update_charts_silently()
+                    if self.settings_service.get_auto_update_charts():
+                        print(f"{Fore.CYAN}   📊 Updating charts...")
+                        self._update_charts_silently()
                     
                     return True
             else:
@@ -85,67 +88,74 @@ class FinanceTracker:
     def view_transactions(self, limit: int = 10):
         """View recent transactions"""
         try:
-            records = self.sheets_service.get_all_transactions()
-            self._display_transactions(records, limit)
+            records = self.sheets_service.get_all_records()
+            if records:
+                # Use settings for max transactions if available
+                max_transactions = self.settings_service.get_max_recent_transactions()
+                effective_limit = min(limit, max_transactions) if limit else max_transactions
+                self._display_transactions(records, effective_limit)
+            else:
+                print(f"{Fore.YELLOW}📝 No transactions found.")
+                
         except Exception as e:
             print(f"{Fore.RED}❌ Error viewing transactions: {str(e)}")
     
     def get_category_summary(self):
-        """Get and display category summary"""
+        """Get spending summary by category"""
         try:
-            records = self.sheets_service.get_all_transactions()
-            category_totals = self._calculate_category_totals(records)
-            self._display_category_summary(category_totals)
+            records = self.sheets_service.get_all_records()
+            if records:
+                category_totals = self._calculate_category_totals(records)
+                self._display_category_summary(category_totals)
+            else:
+                print(f"{Fore.YELLOW}📝 No transactions found.")
+                
         except Exception as e:
             print(f"{Fore.RED}❌ Error generating category summary: {str(e)}")
     
     def create_charts(self) -> bool:
-        """Create charts in Google Sheets"""
+        """Create/update charts in Google Sheets"""
         try:
-            records = self.sheets_service.get_all_transactions()
-            return self.chart_service.create_all_charts(records)
+            records = self.sheets_service.get_all_records()
+            if not records:
+                print(f"{Fore.YELLOW}📊 No data available for charts.")
+                return False
+            
+            print(f"{Fore.CYAN}📊 Creating charts...")
+            success = self.chart_service.create_all_charts(records)
+            
+            if success:
+                print(f"{Fore.GREEN}✅ Charts created successfully!")
+                print(f"{Fore.CYAN}🔗 Open your Google Sheets to view the charts!")
+                return True
+            else:
+                print(f"{Fore.RED}❌ Failed to create charts.")
+                return False
+                
         except Exception as e:
             print(f"{Fore.RED}❌ Error creating charts: {str(e)}")
             return False
     
-    def _update_charts_silently(self) -> bool:
-        """Update charts without verbose output"""
+    def _update_charts_silently(self):
+        """Update charts without user feedback"""
         try:
-            records = self.sheets_service.get_all_transactions()
+            records = self.sheets_service.get_all_records()
             if records:
-                # Temporarily suppress chart service output by redirecting
-                import sys
-                from io import StringIO
-                
-                old_stdout = sys.stdout
-                sys.stdout = StringIO()
-                
-                success = self.chart_service.create_all_charts(records)
-                
-                # Restore stdout
-                sys.stdout = old_stdout
-                
-                if success:
-                    print(f"{Fore.GREEN}   ✅ Charts updated!")
-                
-                return success
-            return False
-        except Exception as e:
-            # Restore stdout in case of error
-            sys.stdout = old_stdout if 'old_stdout' in locals() else sys.stdout
-            return False
+                self.chart_service.create_all_charts(records)
+        except Exception:
+            pass  # Silent update, don't show errors
     
     def is_connected(self) -> bool:
-        """Check if the tracker is connected to Google Sheets"""
-        return self.connected and self.sheets_service.is_connected()
+        """Check if connected to Google Sheets"""
+        return self.sheets_service.is_connected()
     
     def _calculate_category_totals(self, records: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
-        """Calculate category totals for summary"""
+        """Calculate category totals for income and expenses"""
         category_totals = {}
         
         for record in records:
-            category = record['Category']
-            amount = float(record['Amount'])
+            category = record.get('Category', 'Unknown')
+            amount = float(record.get('Amount', 0))
             
             if category not in category_totals:
                 category_totals[category] = {'income': 0, 'expense': 0}
@@ -178,11 +188,15 @@ class FinanceTracker:
             amount = float(record['Amount'])
             balance = float(record['Balance'])
             
-            # Color code amounts
-            if amount < 0:
-                amount_str = f"{Fore.RED}-${abs(amount):.2f}"
-            else:
-                amount_str = f"{Fore.GREEN}+${amount:.2f}"
+            # Color code amounts using currency service
+            amount_str = self.currency_service.format_amount_with_color(
+                amount, 
+                positive_color=Fore.GREEN, 
+                negative_color=Fore.RED, 
+                reset_color=Style.RESET_ALL
+            )
+            
+            balance_str = self.currency_service.format_balance(balance)
             
             table_data.append([
                 record['Date'],
@@ -190,7 +204,7 @@ class FinanceTracker:
                 record['Category'],
                 amount_str,
                 record['Type'],
-                f"${balance:.2f}"
+                balance_str
             ])
         
         print(f"\n{Fore.CYAN}📊 Recent Transactions (Last {len(recent_records)}):")
@@ -214,43 +228,25 @@ class FinanceTracker:
             expense = totals['expense']
             net = income - expense
             
+            # Format amounts using currency service
+            income_str = self.currency_service.format_amount_with_color(
+                income, positive_color=Fore.GREEN, reset_color=Style.RESET_ALL
+            )
+            expense_str = self.currency_service.format_amount_with_color(
+                expense, negative_color=Fore.RED, reset_color=Style.RESET_ALL
+            )
             net_color = Fore.GREEN if net >= 0 else Fore.RED
+            net_str = f"{net_color}{self.currency_service.format_balance(net)}{Style.RESET_ALL}"
             
             table_data.append([
                 category,
-                f"{Fore.GREEN}${income:.2f}",
-                f"{Fore.RED}${expense:.2f}",
-                f"{net_color}${net:.2f}"
+                income_str,
+                expense_str,
+                net_str
             ])
         
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
     
     def _truncate_text(self, text: str, max_length: int) -> str:
         """Truncate text to maximum length"""
-        return text[:max_length] + "..." if len(text) > max_length else text
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get financial statistics"""
-        records = self.sheets_service.get_all_transactions()
-        
-        if not records:
-            return {
-                'total_transactions': 0,
-                'total_income': 0,
-                'total_expenses': 0,
-                'current_balance': 0,
-                'categories_count': 0
-            }
-        
-        total_income = sum(float(r['Amount']) for r in records if float(r['Amount']) > 0)
-        total_expenses = sum(abs(float(r['Amount'])) for r in records if float(r['Amount']) < 0)
-        categories = set(r['Category'] for r in records)
-        
-        return {
-            'total_transactions': len(records),
-            'total_income': total_income,
-            'total_expenses': total_expenses,
-            'current_balance': self.get_current_balance(),
-            'categories_count': len(categories),
-            'categories': list(categories)
-        } 
+        return text[:max_length] + "..." if len(text) > max_length else text 

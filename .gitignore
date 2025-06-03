@@ -3,6 +3,10 @@ credentials.json
 *.json.bak
 config.ini
 .env
+*.key
+*.pem
+secrets.json
+token.json
 
 # Python cache files
 __pycache__/
@@ -78,4 +82,24 @@ logs/
 *.tmp
 *.temp
 temp/
-tmp/ 
+tmp/
+
+# Database files (if using local databases)
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Finance/Excel files (if contains sensitive data)
+# Uncomment if you have sensitive financial data
+# *.xlsx
+# *.csv
+# *.xls
+
+# Google Sheets API files (if using)
+client_secret*.json
+service_account*.json 

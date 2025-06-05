@@ -143,18 +143,40 @@ class FinanceTrackerGUI:
         button_frame = ttk.Frame(controls_frame)
         button_frame.grid(row=3, column=0, columnspan=2, pady=20)
         
-        ttk.Button(button_frame, text="💸 Add Expense", command=self.add_expense, 
-                  style='Action.TButton').pack(pady=5, fill='x')
-        ttk.Button(button_frame, text="💰 Add Income", command=self.add_income, 
-                  style='Action.TButton').pack(pady=5, fill='x')
-        ttk.Button(button_frame, text="💳 Refresh Balance", command=self.refresh_balance, 
-                  style='Action.TButton').pack(pady=5, fill='x')
-        ttk.Button(button_frame, text="📊 Update Charts", command=self.update_charts, 
-                  style='Action.TButton').pack(pady=5, fill='x')
-        ttk.Button(button_frame, text="💱 Currency Settings", command=self.open_currency_settings, 
-                  style='Action.TButton').pack(pady=5, fill='x')
-        ttk.Button(button_frame, text="🔄 Refresh Data", command=self.refresh_data, 
-                  style='Action.TButton').pack(pady=5, fill='x')
+        # Basic Transaction Buttons
+        basic_frame = ttk.LabelFrame(button_frame, text="💰 Basic Transactions", padding="5")
+        basic_frame.pack(fill='x', pady=5)
+        
+        ttk.Button(basic_frame, text="💸 Add Expense", command=self.add_expense, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(basic_frame, text="💰 Add Income", command=self.add_income, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        
+        # AI-Powered Transaction Buttons
+        ai_frame = ttk.LabelFrame(button_frame, text="🤖 AI-Powered Features", padding="5")
+        ai_frame.pack(fill='x', pady=5)
+        
+        ttk.Button(ai_frame, text="🤖 Smart Add (AI Categories)", command=self.add_ai_transaction, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(ai_frame, text="💬 Natural Language Entry", command=self.add_natural_language, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(ai_frame, text="🧠 Generate AI Insights", command=self.show_ai_insights, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(ai_frame, text="📊 AI Financial Report", command=self.generate_ai_report, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        
+        # Utility Buttons
+        utility_frame = ttk.LabelFrame(button_frame, text="⚙️ Utilities", padding="5")
+        utility_frame.pack(fill='x', pady=5)
+        
+        ttk.Button(utility_frame, text="💳 Refresh Balance", command=self.refresh_balance, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(utility_frame, text="📊 Update Charts", command=self.update_charts, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(utility_frame, text="💱 Currency Settings", command=self.open_currency_settings, 
+                  style='Action.TButton').pack(pady=2, fill='x')
+        ttk.Button(utility_frame, text="🔄 Refresh Data", command=self.refresh_data, 
+                  style='Action.TButton').pack(pady=2, fill='x')
         
         # Right panel - Recent Transactions
         self.transactions_frame = ttk.LabelFrame(main_frame, text="Recent Transactions", padding="10")
@@ -191,6 +213,498 @@ class FinanceTrackerGUI:
     def add_income(self):
         """Add income transaction"""
         self.add_transaction(is_income=True)
+    
+    def add_ai_transaction(self):
+        """Add transaction with AI-powered smart categorization"""
+        try:
+            if not self.tracker.is_ai_available():
+                messagebox.showwarning("AI Not Available", 
+                                     "AI features are not available. Please check your GEMINI_API_KEY.")
+                return
+            
+            amount_str = self.amount_var.get()
+            description = self.description_var.get()
+            
+            if not amount_str or not description:
+                messagebox.showwarning("Input Required", "Please enter both amount and description for AI categorization.")
+                return
+            
+            # Validate amount
+            try:
+                amount = self.currency_service.parse_amount(amount_str.strip())
+                if amount <= 0:
+                    messagebox.showerror("Invalid Amount", "Amount must be positive.")
+                    return
+            except ValueError:
+                messagebox.showerror("Invalid Amount", "Invalid amount format.")
+                return
+            
+            # Ask for transaction type
+            transaction_type = self._ask_transaction_type()
+            if not transaction_type:
+                return
+            
+            self.status_var.set("🤖 AI is analyzing transaction...")
+            self.root.update()
+            
+            # Run AI categorization in background
+            threading.Thread(target=self._add_ai_transaction_background, 
+                           args=(description.strip(), amount, transaction_type), daemon=True).start()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to process AI transaction: {str(e)}")
+    
+    def _ask_transaction_type(self):
+        """Ask user to choose between Income or Expense"""
+        choice_window = tk.Toplevel(self.root)
+        choice_window.title("Transaction Type")
+        choice_window.geometry("300x150")
+        choice_window.transient(self.root)
+        choice_window.grab_set()
+        
+        # Center the window
+        choice_window.update_idletasks()
+        x = (choice_window.winfo_screenwidth() // 2) - (300 // 2)
+        y = (choice_window.winfo_screenheight() // 2) - (150 // 2)
+        choice_window.geometry(f"300x150+{x}+{y}")
+        
+        result = {"type": None}
+        
+        # Main frame
+        main_frame = ttk.Frame(choice_window, padding="20")
+        main_frame.pack(fill="both", expand=True)
+        
+        ttk.Label(main_frame, text="Is this transaction an:", font=('Arial', 12)).pack(pady=10)
+        
+        def set_expense():
+            result["type"] = "Expense"
+            choice_window.destroy()
+        
+        def set_income():
+            result["type"] = "Income"
+            choice_window.destroy()
+        
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        
+        ttk.Button(button_frame, text="💸 Expense", command=set_expense).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="💰 Income", command=set_income).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="❌ Cancel", command=choice_window.destroy).pack(side="left", padx=5)
+        
+        choice_window.wait_window()
+        return result["type"]
+    
+    def _add_ai_transaction_background(self, description: str, amount: float, transaction_type: str):
+        """Add AI transaction in background"""
+        try:
+            success = self.tracker.add_transaction_with_ai_category(description, amount, transaction_type)
+            if success:
+                self._invalidate_cache()
+                time.sleep(0.5)
+                
+                self.root.after(0, lambda: [
+                    self.clear_inputs(),
+                    self._update_balance_display(),
+                    self._refresh_data_sync(),
+                    self.status_var.set("🤖 AI transaction added successfully!")
+                ])
+            else:
+                self.root.after(0, lambda: [
+                    messagebox.showerror("Error", "Failed to add AI transaction"),
+                    self.status_var.set("❌ Error adding AI transaction")
+                ])
+        except Exception as e:
+            self.root.after(0, lambda: [
+                messagebox.showerror("Error", f"AI transaction failed: {str(e)}"),
+                self.status_var.set("❌ AI transaction error")
+            ])
+    
+    def add_natural_language(self):
+        """Add transaction using natural language processing"""
+        try:
+            if not self.tracker.is_ai_available():
+                messagebox.showwarning("AI Not Available", 
+                                     "AI features are not available. Please check your GEMINI_API_KEY.")
+                return
+            
+            # Create natural language input dialog
+            nl_window = tk.Toplevel(self.root)
+            nl_window.title("💬 Natural Language Transaction")
+            nl_window.geometry("500x300")
+            nl_window.transient(self.root)
+            nl_window.grab_set()
+            
+            # Center the window
+            nl_window.update_idletasks()
+            x = (nl_window.winfo_screenwidth() // 2) - (500 // 2)
+            y = (nl_window.winfo_screenheight() // 2) - (300 // 2)
+            nl_window.geometry(f"500x300+{x}+{y}")
+            
+            main_frame = ttk.Frame(nl_window, padding="20")
+            main_frame.pack(fill="both", expand=True)
+            
+            # Title
+            ttk.Label(main_frame, text="💬 Natural Language Transaction Entry", 
+                     font=('Arial', 14, 'bold')).pack(pady=(0, 15))
+            
+            # Instructions
+            instructions = (
+                "Describe your transaction in plain English:\n\n"
+                "Examples:\n"
+                "• 'I spent $25 on groceries at Walmart yesterday'\n"
+                "• 'Got paid $500 for freelance work today'\n"
+                "• 'Bought coffee for $4.50 this morning'\n"
+                "• 'Received $100 cash gift from mom'"
+            )
+            ttk.Label(main_frame, text=instructions, font=('Arial', 9)).pack(pady=(0, 15))
+            
+            # Text input
+            ttk.Label(main_frame, text="Enter your transaction:", font=('Arial', 10, 'bold')).pack(anchor="w")
+            text_entry = tk.Text(main_frame, height=3, width=50, wrap=tk.WORD)
+            text_entry.pack(fill="x", pady=5)
+            
+            # Result preview
+            preview_frame = ttk.LabelFrame(main_frame, text="AI Preview", padding="10")
+            preview_frame.pack(fill="both", expand=True, pady=(10, 0))
+            
+            preview_text = tk.Text(preview_frame, height=4, width=50, wrap=tk.WORD, state=tk.DISABLED)
+            preview_text.pack(fill="both", expand=True)
+            
+            def process_natural_language():
+                """Process the natural language input"""
+                try:
+                    input_text = text_entry.get("1.0", tk.END).strip()
+                    if not input_text:
+                        messagebox.showwarning("Input Required", "Please enter a transaction description.")
+                        return
+                    
+                    # Show processing status
+                    preview_text.config(state=tk.NORMAL)
+                    preview_text.delete("1.0", tk.END)
+                    preview_text.insert("1.0", "🤖 AI is processing your transaction...")
+                    preview_text.config(state=tk.DISABLED)
+                    nl_window.update()
+                    
+                    # Process in background
+                    threading.Thread(target=self._process_nl_background, 
+                                   args=(input_text, preview_text, nl_window), daemon=True).start()
+                    
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to process: {str(e)}")
+            
+            def cancel():
+                nl_window.destroy()
+            
+            # Buttons
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill="x", pady=(10, 0))
+            
+            ttk.Button(button_frame, text="🤖 Process with AI", command=process_natural_language).pack(side="left", padx=(0, 5))
+            ttk.Button(button_frame, text="❌ Cancel", command=cancel).pack(side="left")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open natural language dialog: {str(e)}")
+    
+    def _process_nl_background(self, input_text: str, preview_text: tk.Text, parent_window: tk.Toplevel):
+        """Process natural language input in background"""
+        try:
+            success = self.tracker.add_transaction_natural_language(input_text)
+            
+            if success:
+                self._invalidate_cache()
+                time.sleep(0.5)
+                
+                self.root.after(0, lambda: [
+                    self._update_balance_display(),
+                    self._refresh_data_sync(),
+                    self.status_var.set("💬 Natural language transaction added!"),
+                    parent_window.destroy(),
+                    messagebox.showinfo("Success", "Transaction processed and added successfully!")
+                ])
+            else:
+                self.root.after(0, lambda: [
+                    preview_text.config(state=tk.NORMAL),
+                    preview_text.delete("1.0", tk.END),
+                    preview_text.insert("1.0", "❌ Failed to process transaction"),
+                    preview_text.config(state=tk.DISABLED),
+                    self.status_var.set("❌ Natural language processing failed")
+                ])
+                
+        except Exception as e:
+            self.root.after(0, lambda: [
+                preview_text.config(state=tk.NORMAL),
+                preview_text.delete("1.0", tk.END),
+                preview_text.insert("1.0", f"❌ Error: {str(e)}"),
+                preview_text.config(state=tk.DISABLED),
+                messagebox.showerror("Error", f"Processing failed: {str(e)}")
+            ])
+    
+    def show_ai_insights(self):
+        """Display AI-generated financial insights"""
+        try:
+            if not self.tracker.is_ai_available():
+                messagebox.showwarning("AI Not Available", 
+                                     "AI features are not available. Please check your GEMINI_API_KEY.")
+                return
+            
+            self.status_var.set("🧠 Generating AI insights...")
+            self.root.update()
+            
+            # Generate insights in background
+            threading.Thread(target=self._generate_insights_background, daemon=True).start()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate insights: {str(e)}")
+    
+    def _generate_insights_background(self):
+        """Generate AI insights in background"""
+        try:
+            # Get data
+            transactions = self.tracker.sheets_service.get_all_records()
+            current_balance = self.tracker.get_current_balance()
+            
+            if not transactions:
+                self.root.after(0, lambda: [
+                    messagebox.showinfo("No Data", "No transactions found. Add some transactions first."),
+                    self.status_var.set("Ready")
+                ])
+                return
+            
+            insights = self.tracker.ai_service.generate_financial_insights(transactions, current_balance)
+            
+            self.root.after(0, lambda: self._display_insights_window(insights))
+            
+        except Exception as e:
+            self.root.after(0, lambda: [
+                messagebox.showerror("Error", f"Failed to generate insights: {str(e)}"),
+                self.status_var.set("❌ Insights generation failed")
+            ])
+    
+    def _display_insights_window(self, insights: dict):
+        """Display insights in a new window"""
+        try:
+            # Create insights window
+            insights_window = tk.Toplevel(self.root)
+            insights_window.title("🧠 AI Financial Insights")
+            insights_window.geometry("700x600")
+            insights_window.transient(self.root)
+            
+            # Center the window
+            insights_window.update_idletasks()
+            x = (insights_window.winfo_screenwidth() // 2) - (700 // 2)
+            y = (insights_window.winfo_screenheight() // 2) - (600 // 2)
+            insights_window.geometry(f"700x600+{x}+{y}")
+            
+            main_frame = ttk.Frame(insights_window, padding="20")
+            main_frame.pack(fill="both", expand=True)
+            
+            # Title
+            ttk.Label(main_frame, text="🧠 AI Financial Insights", 
+                     font=('Arial', 16, 'bold')).pack(pady=(0, 15))
+            
+            # Create scrollable text area
+            text_frame = ttk.Frame(main_frame)
+            text_frame.pack(fill="both", expand=True)
+            
+            text_widget = tk.Text(text_frame, wrap=tk.WORD, font=('Arial', 10))
+            scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+            text_widget.configure(yscrollcommand=scrollbar.set)
+            
+            text_widget.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Format and display insights
+            insights_text = self._format_insights_display(insights)
+            text_widget.insert("1.0", insights_text)
+            text_widget.config(state=tk.DISABLED)
+            
+            # Close button
+            ttk.Button(main_frame, text="Close", command=insights_window.destroy).pack(pady=(15, 0))
+            
+            self.status_var.set("🧠 AI insights generated successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to display insights: {str(e)}")
+    
+    def _format_insights_display(self, insights: dict) -> str:
+        """Format insights for display"""
+        formatted = "🤖 AI FINANCIAL INSIGHTS\n"
+        formatted += "=" * 50 + "\n\n"
+        
+        sections = [
+            ("📊 SPENDING PATTERNS", "spending_patterns"),
+            ("💡 BUDGET RECOMMENDATIONS", "budget_recommendations"),
+            ("💰 SAVINGS TIPS", "savings_tips"),
+            ("🚨 ANOMALIES DETECTED", "anomalies"),
+            ("📈 MONTHLY TREND", "monthly_trend"),
+            ("🏆 TOP CATEGORIES", "top_categories")
+        ]
+        
+        for title, key in sections:
+            formatted += f"{title}:\n"
+            insight = insights.get(key, f"No {key.replace('_', ' ')} available")
+            
+            if isinstance(insight, list):
+                for item in insight:
+                    formatted += f"• {item}\n"
+            else:
+                formatted += f"{insight}\n"
+            formatted += "\n"
+        
+        return formatted
+    
+    def generate_ai_report(self):
+        """Generate AI financial report"""
+        try:
+            if not self.tracker.is_ai_available():
+                messagebox.showwarning("AI Not Available", 
+                                     "AI features are not available. Please check your GEMINI_API_KEY.")
+                return
+            
+            # Ask for report period
+            period = self._ask_report_period()
+            if not period:
+                return
+            
+            self.status_var.set(f"📊 Generating {period} AI report...")
+            self.root.update()
+            
+            # Generate report in background
+            threading.Thread(target=self._generate_report_background, args=(period,), daemon=True).start()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate report: {str(e)}")
+    
+    def _ask_report_period(self):
+        """Ask user to choose report period"""
+        period_window = tk.Toplevel(self.root)
+        period_window.title("📊 Report Period")
+        period_window.geometry("300x200")
+        period_window.transient(self.root)
+        period_window.grab_set()
+        
+        # Center the window
+        period_window.update_idletasks()
+        x = (period_window.winfo_screenwidth() // 2) - (300 // 2)
+        y = (period_window.winfo_screenheight() // 2) - (200 // 2)
+        period_window.geometry(f"300x200+{x}+{y}")
+        
+        result = {"period": None}
+        
+        main_frame = ttk.Frame(period_window, padding="20")
+        main_frame.pack(fill="both", expand=True)
+        
+        ttk.Label(main_frame, text="📊 Select Report Period:", font=('Arial', 12, 'bold')).pack(pady=10)
+        
+        def set_weekly():
+            result["period"] = "weekly"
+            period_window.destroy()
+        
+        def set_monthly():
+            result["period"] = "monthly"
+            period_window.destroy()
+        
+        def set_yearly():
+            result["period"] = "yearly"
+            period_window.destroy()
+        
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        
+        ttk.Button(button_frame, text="📅 Weekly", command=set_weekly).pack(pady=2, fill='x')
+        ttk.Button(button_frame, text="📆 Monthly", command=set_monthly).pack(pady=2, fill='x')
+        ttk.Button(button_frame, text="📋 Yearly", command=set_yearly).pack(pady=2, fill='x')
+        ttk.Button(button_frame, text="❌ Cancel", command=period_window.destroy).pack(pady=2, fill='x')
+        
+        period_window.wait_window()
+        return result["period"]
+    
+    def _generate_report_background(self, period: str):
+        """Generate AI report in background"""
+        try:
+            transactions = self.tracker.sheets_service.get_all_records()
+            
+            if not transactions:
+                self.root.after(0, lambda: [
+                    messagebox.showinfo("No Data", "No transactions found. Add some transactions first."),
+                    self.status_var.set("Ready")
+                ])
+                return
+            
+            report = self.tracker.ai_service.generate_expense_report(transactions, period)
+            
+            self.root.after(0, lambda: self._display_report_window(report, period))
+            
+        except Exception as e:
+            self.root.after(0, lambda: [
+                messagebox.showerror("Error", f"Failed to generate report: {str(e)}"),
+                self.status_var.set("❌ Report generation failed")
+            ])
+    
+    def _display_report_window(self, report: str, period: str):
+        """Display report in a new window"""
+        try:
+            # Create report window
+            report_window = tk.Toplevel(self.root)
+            report_window.title(f"📊 {period.title()} AI Financial Report")
+            report_window.geometry("800x700")
+            report_window.transient(self.root)
+            
+            # Center the window
+            report_window.update_idletasks()
+            x = (report_window.winfo_screenwidth() // 2) - (800 // 2)
+            y = (report_window.winfo_screenheight() // 2) - (700 // 2)
+            report_window.geometry(f"800x700+{x}+{y}")
+            
+            main_frame = ttk.Frame(report_window, padding="20")
+            main_frame.pack(fill="both", expand=True)
+            
+            # Title
+            ttk.Label(main_frame, text=f"📊 {period.title()} Financial Report", 
+                     font=('Arial', 16, 'bold')).pack(pady=(0, 15))
+            
+            # Create scrollable text area
+            text_frame = ttk.Frame(main_frame)
+            text_frame.pack(fill="both", expand=True)
+            
+            text_widget = tk.Text(text_frame, wrap=tk.WORD, font=('Courier', 9))
+            scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+            text_widget.configure(yscrollcommand=scrollbar.set)
+            
+            text_widget.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Display report
+            text_widget.insert("1.0", report)
+            text_widget.config(state=tk.DISABLED)
+            
+            # Buttons
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill="x", pady=(15, 0))
+            
+            def save_report():
+                """Save report to file"""
+                try:
+                    from tkinter import filedialog
+                    filename = filedialog.asksaveasfilename(
+                        defaultextension=".txt",
+                        filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+                        title="Save Financial Report"
+                    )
+                    if filename:
+                        with open(filename, 'w', encoding='utf-8') as f:
+                            f.write(report)
+                        messagebox.showinfo("Success", f"Report saved to {filename}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to save report: {str(e)}")
+            
+            ttk.Button(button_frame, text="💾 Save Report", command=save_report).pack(side="left", padx=(0, 5))
+            ttk.Button(button_frame, text="Close", command=report_window.destroy).pack(side="left")
+            
+            self.status_var.set(f"📊 {period.title()} AI report generated successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to display report: {str(e)}")
     
     def _validate_and_sanitize_inputs(self, amount_str: str, category: str, description: str) -> tuple:
         """Validate and sanitize user inputs"""

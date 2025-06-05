@@ -1,6 +1,6 @@
 """
-Finance Tracker - Modular Version
-Clean, modular personal finance tracker with Google Sheets integration
+Finance Tracker - Modular Version with AI Integration
+Clean, modular personal finance tracker with Google Sheets integration and Gemini AI
 """
 
 import sys
@@ -17,16 +17,18 @@ from services.sheets_service import SheetsService
 from services.chart_service import ChartService
 from services.currency_service import get_currency_service
 from services.settings_service import get_settings_service
+from services.ai_service import get_ai_service
 
 
 class FinanceTracker:
-    """Main Finance Tracker class with modular architecture"""
+    """Main Finance Tracker class with modular architecture and AI features"""
     
     def __init__(self):
         self.sheets_service = SheetsService()
         self.chart_service = ChartService(self.sheets_service)  # Pass sheets_service to chart_service
         self.currency_service = get_currency_service()
         self.settings_service = get_settings_service()
+        self.ai_service = get_ai_service()
         
         # Initialize Google Sheets connection
         self._initialize_connection()
@@ -43,7 +45,7 @@ class FinanceTracker:
             print(f"{Fore.RED}❌ Error connecting to Google Sheets: {str(e)}")
     
     def add_transaction(self, description: str, category: str, amount: float, transaction_type: str) -> bool:
-        """Add a new transaction"""
+        """Add a new transaction with optional AI categorization"""
         try:
             # Create transaction object
             transaction = Transaction(description, category, amount, transaction_type)
@@ -81,6 +83,105 @@ class FinanceTracker:
             print(f"{Fore.RED}❌ Error adding transaction: {str(e)}")
             return False
     
+    def add_transaction_with_ai_category(self, description: str, amount: float, transaction_type: str) -> bool:
+        """Add transaction with AI-powered smart categorization"""
+        try:
+            # Get user transaction history for pattern learning
+            user_history = self.sheets_service.get_all_records()
+            
+            # Use AI to suggest category
+            suggested_category = self.ai_service.categorize_transaction(
+                description, amount, user_history
+            )
+            
+            print(f"{Fore.CYAN}🤖 AI suggested category: {suggested_category}")
+            
+            # Add transaction with AI-suggested category
+            return self.add_transaction(description, suggested_category, amount, transaction_type)
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error adding AI-categorized transaction: {str(e)}")
+            return False
+    
+    def add_transaction_natural_language(self, natural_input: str) -> bool:
+        """Add transaction using natural language input"""
+        try:
+            print(f"{Fore.CYAN}🤖 Processing natural language input...")
+            
+            # Parse natural language using AI
+            parsed_data = self.ai_service.parse_natural_language_transaction(natural_input)
+            
+            if not parsed_data or not parsed_data.get('description'):
+                print(f"{Fore.RED}❌ Could not parse the transaction. Please try again.")
+                return False
+            
+            # Display parsed information
+            print(f"{Fore.GREEN}✅ Parsed transaction:")
+            print(f"   📝 Description: {parsed_data['description']}")
+            print(f"   💵 Amount: ${abs(parsed_data['amount']):.2f}")
+            print(f"   📂 Category: {parsed_data['category']}")
+            print(f"   📅 Date: {parsed_data['date']}")
+            print(f"   🏷️  Type: {parsed_data['type']}")
+            
+            # Add the transaction
+            return self.add_transaction(
+                description=parsed_data['description'],
+                category=parsed_data['category'],
+                amount=abs(parsed_data['amount']),
+                transaction_type=parsed_data['type']
+            )
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error processing natural language transaction: {str(e)}")
+            return False
+    
+    def generate_ai_insights(self) -> bool:
+        """Generate AI-powered financial insights and recommendations"""
+        try:
+            print(f"{Fore.CYAN}🤖 Generating financial insights...")
+            
+            # Get transaction data
+            transactions = self.sheets_service.get_all_records()
+            current_balance = self.get_current_balance()
+            
+            if not transactions:
+                print(f"{Fore.YELLOW}📝 No transactions found. Add some transactions first.")
+                return False
+            
+            # Generate insights using AI
+            insights = self.ai_service.generate_financial_insights(transactions, current_balance)
+            
+            # Display insights
+            self._display_ai_insights(insights)
+            return True
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error generating insights: {str(e)}")
+            return False
+    
+    def generate_ai_report(self, period: str = "monthly") -> bool:
+        """Generate AI-powered expense report"""
+        try:
+            print(f"{Fore.CYAN}🤖 Generating {period} AI report...")
+            
+            # Get transaction data
+            transactions = self.sheets_service.get_all_records()
+            
+            if not transactions:
+                print(f"{Fore.YELLOW}📝 No transactions found. Add some transactions first.")
+                return False
+            
+            # Generate report using AI
+            report = self.ai_service.generate_expense_report(transactions, period)
+            
+            # Display report
+            print(report)
+            return True
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error generating report: {str(e)}")
+            return False
+
     def get_current_balance(self) -> float:
         """Get current balance from Google Sheets"""
         return self.sheets_service.get_current_balance()
@@ -149,6 +250,48 @@ class FinanceTracker:
         """Check if connected to Google Sheets"""
         return self.sheets_service.is_connected()
     
+    def is_ai_available(self) -> bool:
+        """Check if AI features are available"""
+        return self.ai_service.is_available()
+    
+    def _display_ai_insights(self, insights: Dict[str, Any]):
+        """Display AI-generated insights in a formatted way"""
+        print(f"\n{Fore.CYAN}{'='*60}")
+        print(f"{'🤖 AI FINANCIAL INSIGHTS':^60}")
+        print(f"{'='*60}{Style.RESET_ALL}\n")
+        
+        # Spending Patterns
+        print(f"{Fore.YELLOW}📊 SPENDING PATTERNS:")
+        print(f"{Style.RESET_ALL}{insights.get('spending_patterns', 'No patterns detected')}\n")
+        
+        # Budget Recommendations
+        print(f"{Fore.GREEN}💡 BUDGET RECOMMENDATIONS:")
+        print(f"{Style.RESET_ALL}{insights.get('budget_recommendations', 'No recommendations available')}\n")
+        
+        # Savings Tips
+        print(f"{Fore.BLUE}💰 SAVINGS TIPS:")
+        print(f"{Style.RESET_ALL}{insights.get('savings_tips', 'No tips available')}\n")
+        
+        # Anomalies
+        print(f"{Fore.RED}🚨 ANOMALIES DETECTED:")
+        print(f"{Style.RESET_ALL}{insights.get('anomalies', 'No anomalies detected')}\n")
+        
+        # Monthly Trend
+        print(f"{Fore.MAGENTA}📈 MONTHLY TREND:")
+        print(f"{Style.RESET_ALL}{insights.get('monthly_trend', 'No trend analysis available')}\n")
+        
+        # Top Categories
+        if insights.get('top_categories'):
+            print(f"{Fore.CYAN}🏆 TOP SPENDING CATEGORIES:")
+            top_cats = insights['top_categories']
+            if isinstance(top_cats, list):
+                for i, category in enumerate(top_cats[:3], 1):
+                    print(f"{Style.RESET_ALL}{i}. {category}")
+            else:
+                print(f"{Style.RESET_ALL}{top_cats}")
+        
+        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+
     def _calculate_category_totals(self, records: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
         """Calculate category totals for income and expenses"""
         category_totals = {}
@@ -199,54 +342,77 @@ class FinanceTracker:
             balance_str = self.currency_service.format_balance(balance)
             
             table_data.append([
-                record['Date'],
-                self._truncate_text(record['Description'], 30),
-                record['Category'],
+                record['Date'][:10],  # Show only date part
+                self._truncate_text(record['Description'], 25),
+                self._truncate_text(record['Category'], 15),
                 amount_str,
                 record['Type'],
                 balance_str
             ])
         
-        print(f"\n{Fore.CYAN}📊 Recent Transactions (Last {len(recent_records)}):")
+        print(f"\n{Fore.CYAN}📊 Recent Transactions (Last {len(recent_records)}):{Style.RESET_ALL}")
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
+        print()
     
     def _display_category_summary(self, category_totals: Dict[str, Dict[str, float]]):
-        """Display category summary in formatted table"""
-        if not category_totals:
-            print(f"{Fore.YELLOW}📝 No transactions found.")
-            return
-        
-        # Import here to avoid circular imports
+        """Display category summary with AI enhancement suggestion"""
         from tabulate import tabulate
         
-        print(f"\n{Fore.CYAN}📈 Category Summary:")
-        headers = ["Category", "Income", "Expenses", "Net"]
+        # Prepare data for table
         table_data = []
+        total_income = 0
+        total_expenses = 0
         
         for category, totals in category_totals.items():
             income = totals['income']
             expense = totals['expense']
             net = income - expense
             
-            # Format amounts using currency service
+            total_income += income
+            total_expenses += expense
+            
+            # Format amounts with colors
             income_str = self.currency_service.format_amount_with_color(
-                income, positive_color=Fore.GREEN, reset_color=Style.RESET_ALL
-            )
+                income, Fore.GREEN, Fore.GREEN, Style.RESET_ALL
+            ) if income > 0 else "$0.00"
+            
             expense_str = self.currency_service.format_amount_with_color(
-                expense, negative_color=Fore.RED, reset_color=Style.RESET_ALL
-            )
+                -expense, Fore.RED, Fore.RED, Style.RESET_ALL
+            ) if expense > 0 else "$0.00"
+            
             net_color = Fore.GREEN if net >= 0 else Fore.RED
-            net_str = f"{net_color}{self.currency_service.format_balance(net)}{Style.RESET_ALL}"
+            net_str = f"{net_color}${abs(net):.2f}{Style.RESET_ALL}"
             
             table_data.append([
-                category,
+                self._truncate_text(category, 20),
                 income_str,
                 expense_str,
                 net_str
             ])
         
+        # Sort by total activity (income + expenses)
+        table_data.sort(key=lambda x: float(x[1].replace('$', '').replace(',', '')) + 
+                                     float(x[2].replace('$', '').replace(',', '')), reverse=True)
+        
+        # Add totals row
+        total_net = total_income - total_expenses
+        net_color = Fore.GREEN if total_net >= 0 else Fore.RED
+        table_data.append([
+            f"{Fore.CYAN}TOTAL{Style.RESET_ALL}",
+            f"{Fore.GREEN}${total_income:.2f}{Style.RESET_ALL}",
+            f"{Fore.RED}${total_expenses:.2f}{Style.RESET_ALL}",
+            f"{net_color}${abs(total_net):.2f}{Style.RESET_ALL}"
+        ])
+        
+        headers = ["Category", "Income", "Expenses", "Net"]
+        print(f"\n{Fore.CYAN}📈 Category Summary:{Style.RESET_ALL}")
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
-    
+        print()
+        
+        # AI Enhancement suggestion
+        if self.ai_service.is_available():
+            print(f"{Fore.CYAN}💡 Tip: Use 'insights' command for AI-powered financial analysis!{Style.RESET_ALL}")
+
     def _truncate_text(self, text: str, max_length: int) -> str:
-        """Truncate text to maximum length"""
-        return text[:max_length] + "..." if len(text) > max_length else text 
+        """Truncate text to specified length"""
+        return text[:max_length-3] + "..." if len(text) > max_length else text 

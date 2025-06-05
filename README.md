@@ -10,6 +10,8 @@ A comprehensive personal finance tracker enhanced with Google Gemini AI for smar
 - **Interactive Charts**: Visual spending analysis and balance trends
 - **Multi-Currency Support**: Track finances in different currencies
 - **Category Analytics**: Detailed spending breakdown by category
+- **GUI and CLI Interfaces**: Choose between graphical and command-line interfaces
+- **Standalone Executable**: Build and distribute as standalone application
 
 ### 🤖 AI-Powered Features
 - **Smart Transaction Categorization**: AI automatically suggests categories based on transaction descriptions
@@ -50,8 +52,15 @@ cp env.example .env
 4. **Set up Google Sheets API** (See detailed setup below)
 
 5. **Run the application**
+
+**CLI Interface:**
 ```bash
 python main.py
+```
+
+**GUI Interface:**
+```bash
+python gui_finance_tracker.py
 ```
 
 ## 🔐 Setup Instructions
@@ -97,7 +106,13 @@ export GEMINI_API_KEY="your_api_key_here"
 echo "GEMINI_API_KEY=your_api_key_here" >> .env
 ```
 
-3. **Restart the application** to enable AI features
+3. **Optional Model Configuration**
+```bash
+# Set preferred Gemini model (default: gemini-2.0-flash-thinking-exp)
+export GEMINI_MODEL="gemini-2.0-flash-thinking-exp"
+```
+
+4. **Restart the application** to enable AI features
 
 ## 🎯 Usage Guide
 
@@ -190,11 +205,16 @@ Spending has increased by 12% compared to last month, primarily in the shopping 
 ```
 Finance-Tracker/
 ├── main.py                     # Main CLI application
-├── gui_finance_tracker.py      # GUI application
+├── gui_finance_tracker.py      # GUI application (tkinter-based)
+├── finance_tracker.py          # Legacy standalone tracker
 ├── requirements.txt            # Project dependencies
+├── build-requirements.txt      # Build-specific dependencies
 ├── README.md                   # Documentation
+├── BUILD_STANDALONE.md         # Standalone build guide
 ├── .env.example               # Environment variables template
 ├── .gitignore                 # Git ignore rules
+├── user_settings.json         # User configuration file
+├── *.spec                     # PyInstaller specification files
 │
 ├── core/                      # Core business logic
 │   └── finance_tracker_modular.py
@@ -203,34 +223,58 @@ Finance-Tracker/
 │   └── transaction.py
 │
 ├── services/                  # Service layer
+│   ├── __init__.py
 │   ├── sheets_service.py      # Google Sheets integration
-│   ├── chart_service.py       # Chart creation
-│   ├── currency_service.py    # Currency handling
+│   ├── chart_service.py       # Chart creation and visualization
+│   ├── currency_service.py    # Currency handling and conversion
 │   ├── settings_service.py    # Settings management
-│   └── ai_service.py          # AI features (Gemini)
+│   └── ai_service.py          # AI features (Gemini integration)
 │
 ├── config/                    # Configuration
 │   └── settings.py
 │
 ├── ui/                        # UI components
-│   └── components.py
+│   ├── components/            # Reusable UI components
+│   ├── dialogs/               # Dialog windows
+│   └── utils/                 # UI utilities
 │
 ├── scripts/                   # Utility scripts
-│   ├── setup_check.py         # Environment setup check
+│   ├── __init__.py
+│   ├── setup_check.py         # Environment setup verification
 │   ├── fix_balance_data.py    # Data repair utilities
-│   └── quick_start.py         # Quick setup script
+│   ├── quick_start.py         # Quick setup script
+│   ├── test_charts.py         # Chart testing script
+│   └── build_standalone.py    # Standalone build script
 │
 ├── tests/                     # Test scripts
+│   ├── __init__.py
 │   ├── test_gemini_models.py  # AI/Gemini testing
 │   └── test_sheets_data.py    # Data integration testing
 │
 ├── examples/                  # Example scripts
+│   ├── __init__.py
 │   └── demo_ai_features.py    # AI features demonstration
 │
 ├── docs/                      # Documentation
 ├── logs/                      # Application logs
-└── data/                      # Local data storage
+├── data/                      # Local data storage
+├── build/                     # Build artifacts
+└── dist/                      # Distribution files
 ```
+
+## 🏗️ Building Standalone Application
+
+The project includes tools to build standalone executables:
+
+```bash
+# Build GUI version
+python scripts/build_standalone.py
+
+# Or use the batch file (Windows)
+build_gui.bat
+```
+
+See `BUILD_STANDALONE.md` for detailed build instructions.
 
 ## 🔧 Configuration
 
@@ -239,17 +283,20 @@ Finance-Tracker/
 | Variable | Description | Required | Example |
 |----------|-------------|----------|---------|
 | `GEMINI_API_KEY` | Google Gemini AI API key | For AI features | `AIzaSy...` |
+| `GEMINI_MODEL` | Preferred Gemini model | No | `gemini-2.0-flash-thinking-exp` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to Google credentials | Yes | `credentials.json` |
 | `SPREADSHEET_NAME` | Google Sheets name | No | `Finance Tracker` |
 | `USER_EMAIL` | Your email for sharing | No | `user@gmail.com` |
 
 ### AI Service Configuration
 
-The AI service automatically handles:
+The AI service features:
 - **Fallback Behavior**: Works without AI when API key is missing
 - **Error Handling**: Graceful degradation when AI services fail
 - **Rate Limiting**: Respects API usage limits
-- **Caching**: Reduces redundant API calls
+- **Model Flexibility**: Supports multiple Gemini models with automatic fallback
+- **Retry Logic**: 3-attempt retry mechanism for API requests
+- **Debug Support**: Comprehensive logging for troubleshooting
 
 ## 🎨 AI Features Deep Dive
 
@@ -296,7 +343,7 @@ from services.ai_service import get_ai_service
 ai_service = get_ai_service()
 transactions = [
     "Spent $50 on groceries",
-    "Got paid $1000 salary",
+    "Got paid $1000 salary", 
     "Coffee $4.50"
 ]
 
@@ -323,6 +370,7 @@ self.categories = {
 - Check if `GEMINI_API_KEY` is set correctly
 - Verify API key has proper permissions
 - Check internet connection
+- Review logs for API errors
 
 **Google Sheets Connection Failed**
 - Ensure `credentials.json` is in the project root
@@ -334,12 +382,19 @@ self.categories = {
 - Check Python version (3.8+ required)
 - Verify virtual environment is activated
 
+**Data Integration Issues**
+- Check transaction data format in Google Sheets
+- Verify column headers match expected format
+- Run diagnostic scripts in `tests/` directory
+
 ### Debug Mode
 
 Enable debug logging by setting:
 ```bash
 export LOG_LEVEL=DEBUG
 ```
+
+Or check the logs directory for detailed application logs.
 
 ## 🤝 Contributing
 
@@ -368,6 +423,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Google Sheets API**: For seamless data synchronization
 - **Colorama**: For beautiful terminal output
 - **Tabulate**: For formatted table display
+- **tkinter**: For GUI interface development
 
 ## 🔮 Future Enhancements
 
@@ -377,6 +433,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Voice Commands**: Speech-to-transaction conversion
 - **Smart Alerts**: AI-driven spending notifications
 - **Financial Goals**: AI-assisted goal setting and tracking
+- **Mobile App**: Cross-platform mobile application
+- **Web Interface**: Browser-based dashboard
 
 ## 🧪 Testing
 
@@ -399,6 +457,19 @@ python scripts/setup_check.py
 
 # Quick start with sample data
 python scripts/quick_start.py
+
+# Test chart generation
+python scripts/test_charts.py
+```
+
+### Building and Testing Standalone
+```bash
+# Build standalone executable
+python scripts/build_standalone.py
+
+# Test the built executable
+./dist/FinanceTrackerGUI.exe  # Windows
+./dist/FinanceTrackerGUI      # Linux/Mac
 ```
 
 ---
